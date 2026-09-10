@@ -3,6 +3,10 @@
 React client for temporary chat channels. Vite, React 18, React Router, and a
 WebSocket client that expects to be disconnected.
 
+> The API it talks to lives in
+> [3l-sari3-backend](https://github.com/akg418/3l-sari3-backend). Start that
+> first - this app is not much use without it.
+
 ---
 
 ## Contents
