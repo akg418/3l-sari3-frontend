@@ -33,7 +33,7 @@ export const ChannelPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { getChannelBySlug, join, refresh } = useChannels();
-  const { isReady } = useRealtime();
+  const { isReady, realtimeEnabled } = useRealtime();
   const toast = useToast();
 
   const knownChannel = getChannelBySlug(channelName);
@@ -44,7 +44,7 @@ export const ChannelPage = () => {
   const [isMembersOpen, setMembersOpen] = useState(true);
 
   const chat = useChannelChat(channel?.id);
-  const { severity } = useCountdown(channel?.expiresAt);
+  const { severity, isExpired } = useCountdown(channel?.expiresAt);
 
   useEffect(() => {
     if (knownChannel) setChannel(knownChannel);
@@ -111,6 +111,23 @@ export const ChannelPage = () => {
       [channel?.id, returnToDirectory],
     ),
   );
+
+  // Without a socket there is no `channel:expired` push, so ask the server:
+  // once the countdown ends (and on every sync) a "gone" answer closes the page.
+  const { sync: syncChat, isGone } = chat;
+  useEffect(() => {
+    if (realtimeEnabled || !isExpired || !channel?.id) return undefined;
+    // A short delay absorbs clock skew, so the server agrees it has expired.
+    const timer = setTimeout(() => void syncChat({ withMembers: false }), 2000);
+    return () => clearTimeout(timer);
+  }, [realtimeEnabled, isExpired, channel?.id, syncChat]);
+
+  useEffect(() => {
+    if (isGone) {
+      void refresh();
+      returnToDirectory(`#${channel?.name ?? channelName} is no longer available.`);
+    }
+  }, [isGone, refresh, returnToDirectory, channel?.name, channelName]);
 
   const handleSubmitPassword = async (password) => {
     try {

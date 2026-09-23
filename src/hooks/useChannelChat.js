@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
 import { channelsApi } from '../api/channels.api.js';
 import { SERVER_EVENTS } from '../websocket/events.js';
-import { useRealtime, useRealtimeEvent } from '../context/RealtimeContext.jsx';
+import { useRealtime, useRealtimeEvent, useSyncHandler } from '../context/RealtimeContext.jsx';
+import { useChannels } from '../context/ChannelsContext.jsx';
+import { useAuth } from '../context/AuthContext.jsx';
 
 const JOIN_STATE = Object.freeze({
   JOINING: 'joining',
@@ -16,8 +18,20 @@ const nextClientMessageId = () => {
   return `local-${Date.now()}-${localMessageCounter}`;
 };
 
+/** Errors that mean the channel is gone, or this user is no longer in it. */
+const GONE_CODES = ['CHANNEL_NOT_FOUND', 'CHANNEL_EXPIRED', 'CHANNEL_NOT_JOINED'];
+
+/** Catch-up pages fetched per sync, at most - enough for any short-lived channel. */
+const MAX_CATCH_UP_PAGES = 10;
+
+const cursorOf = (message) => (message ? { createdAt: message.createdAt, id: message.id } : null);
+
+const byTimeline = (a, b) =>
+  Date.parse(a.createdAt) - Date.parse(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
 const initialState = {
   joinState: JOIN_STATE.JOINING,
+  isGone: false,
   joinError: null,
   messages: [],
   /** Optimistic bubbles the server has not confirmed yet. */
@@ -63,6 +77,23 @@ const reducer = (state, action) => {
         pending: state.pending.filter((entry) => entry.serverId !== action.message.id),
       };
     }
+
+    /** Messages fetched over HTTP: merged by id, kept in timeline order. */
+    case 'MESSAGES_MERGED': {
+      const known = new Set(state.messages.map((message) => message.id));
+      const fresh = action.messages.filter((message) => !known.has(message.id));
+      if (fresh.length === 0) return state;
+
+      const ids = new Set(fresh.map((message) => message.id));
+      return {
+        ...state,
+        messages: [...state.messages, ...fresh].sort(byTimeline),
+        pending: state.pending.filter((entry) => !ids.has(entry.serverId)),
+      };
+    }
+
+    case 'GONE':
+      return { ...state, isGone: true };
 
     case 'MESSAGE_PENDING':
       return { ...state, pending: [...state.pending, action.entry] };
@@ -151,10 +182,43 @@ const reducer = (state, action) => {
  * surfaces as `PASSWORD_REQUIRED` rather than an error, so the UI can prompt.
  */
 export const useChannelChat = (channelId) => {
-  const { client, isReady } = useRealtime();
+  const { client, isReady, realtimeEnabled } = useRealtime();
+  const { markRead: clearBadge } = useChannels();
+  const { user } = useAuth();
   const [state, dispatch] = useReducer(reducer, initialState);
   const channelIdRef = useRef(channelId);
   channelIdRef.current = channelId;
+  const joinStateRef = useRef(state.joinState);
+  joinStateRef.current = state.joinState;
+
+  /**
+   * Without a socket: the newest message this client has fetched from the
+   * server. Catch-up asks for everything after it. Only server reads move it,
+   * so a message sent from here cannot hide others that arrived just before.
+   */
+  const syncCursorRef = useRef(null);
+
+  const markReadOverHttp = useCallback(
+    (id) => {
+      clearBadge(id);
+      void channelsApi.markRead(id).catch(() => {});
+    },
+    [clearBadge],
+  );
+
+  const joinOverHttp = useCallback(
+    async (password) => {
+      await channelsApi.join(channelId, password);
+      const [history, roster] = await Promise.all([
+        channelsApi.messages(channelId),
+        channelsApi.members(channelId),
+      ]);
+      syncCursorRef.current = cursorOf(history.messages.at(-1));
+      markReadOverHttp(channelId);
+      return { messages: history.messages, pageInfo: history.pageInfo, members: roster.members };
+    },
+    [channelId, markReadOverHttp],
+  );
 
   const join = useCallback(
     async (password) => {
@@ -162,7 +226,9 @@ export const useChannelChat = (channelId) => {
 
       dispatch({ type: 'JOINING' });
       try {
-        const result = await client.joinChannel(channelId, { password });
+        const result = realtimeEnabled
+          ? await client.joinChannel(channelId, { password })
+          : await joinOverHttp(password);
         dispatch({
           type: 'JOINED',
           messages: result.messages ?? [],
@@ -182,7 +248,7 @@ export const useChannelChat = (channelId) => {
         return { ok: false, error };
       }
     },
-    [channelId, client],
+    [channelId, client, realtimeEnabled, joinOverHttp],
   );
 
   // Joining is tied to the socket being ready, so a reconnect re-runs it and
@@ -191,6 +257,51 @@ export const useChannelChat = (channelId) => {
     if (!isReady || !channelId) return;
     void join();
   }, [channelId, isReady, join]);
+
+  /**
+   * Catch-up for socket-less mode: fetch messages newer than the sync cursor,
+   * then the roster. A "gone" error means the channel expired or we left it.
+   */
+  const catchUp = useCallback(
+    async ({ withMembers = true } = {}) => {
+      const id = channelIdRef.current;
+      if (!id || joinStateRef.current !== JOIN_STATE.JOINED) return;
+
+      try {
+        let cursor = syncCursorRef.current;
+        const fetched = [];
+
+        for (let page = 0; page < MAX_CATCH_UP_PAGES; page += 1) {
+          const result = await channelsApi.messages(
+            id,
+            cursor ? { afterCreatedAt: cursor.createdAt, afterId: cursor.id, limit: 100 } : {},
+          );
+          fetched.push(...result.messages);
+          const hadCursor = Boolean(cursor);
+          cursor = cursorOf(result.messages.at(-1)) ?? cursor;
+          // Without a cursor that was the latest page; older ones load on scroll.
+          if (!hadCursor || !result.pageInfo?.hasMore) break;
+        }
+
+        if (id !== channelIdRef.current) return;
+        syncCursorRef.current = cursor;
+        if (fetched.length > 0) dispatch({ type: 'MESSAGES_MERGED', messages: fetched });
+
+        const fromOthers = fetched.some((message) => message.sender?.id !== user?.id);
+        if (fromOthers && document.visibilityState === 'visible') markReadOverHttp(id);
+
+        if (withMembers) {
+          const roster = await channelsApi.members(id);
+          if (id === channelIdRef.current) dispatch({ type: 'MEMBERS_SET', members: roster.members });
+        }
+      } catch (error) {
+        if (GONE_CODES.includes(error?.code)) dispatch({ type: 'GONE' });
+      }
+    },
+    [markReadOverHttp, user?.id],
+  );
+
+  useSyncHandler(catchUp);
 
   const forThisChannel = (handler) => (payload) => {
     if (payload.channelId !== channelIdRef.current) return;
@@ -273,6 +384,19 @@ export const useChannelChat = (channelId) => {
       });
 
       try {
+        if (!realtimeEnabled) {
+          const { message } = await channelsApi.sendMessage(channelId, {
+            content: body || undefined,
+            attachmentIds,
+            clientMessageId,
+          });
+          dispatch({ type: 'MESSAGES_MERGED', messages: [message] });
+          dispatch({ type: 'MESSAGE_DISCARDED', clientMessageId });
+          // Pull in anything others sent meanwhile, so the reply lands in context.
+          void catchUp({ withMembers: false });
+          return { ok: true };
+        }
+
         const ack = await client.sendMessage({
           channelId,
           content: body,
@@ -283,10 +407,11 @@ export const useChannelChat = (channelId) => {
         return { ok: true };
       } catch (error) {
         dispatch({ type: 'MESSAGE_FAILED', clientMessageId, error });
+        if (GONE_CODES.includes(error?.code)) dispatch({ type: 'GONE' });
         return { ok: false, error };
       }
     },
-    [channelId, client],
+    [channelId, client, realtimeEnabled, catchUp],
   );
 
   const discardFailed = useCallback((clientMessageId) => {
@@ -333,6 +458,9 @@ export const useChannelChat = (channelId) => {
   return {
     joinState: state.joinState,
     joinError: state.joinError,
+    /** Socket-less mode only: the channel expired or this user left it. */
+    isGone: state.isGone,
+    sync: catchUp,
     isJoining: state.joinState === JOIN_STATE.JOINING,
     needsPassword: state.joinState === JOIN_STATE.PASSWORD_REQUIRED,
     timeline,

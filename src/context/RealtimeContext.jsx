@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { realtimeClient } from '../websocket/RealtimeClient.js';
 import { CONNECTION_STATUS, LOCAL_EVENTS, SERVER_EVENTS } from '../websocket/events.js';
 import { config } from '../config.js';
@@ -7,14 +7,49 @@ import { useToast } from './ToastContext.jsx';
 
 const RealtimeContext = createContext(null);
 
+const { realtimeEnabled } = config;
+
 /**
  * Binds the socket's lifetime to the session: it connects once the user is
  * authenticated and disconnects on sign-out. The client itself owns reconnects.
+ *
+ * With the socket switched off (VITE_REALTIME_ENABLED=false) it instead owns
+ * *sync*: components register a handler that fetches what they may have
+ * missed, and `sync()` runs them all - from the Sync button, and on a timer.
  */
 export const RealtimeProvider = ({ children }) => {
   const { isAuthenticated, logout } = useAuth();
   const toast = useToast();
   const [status, setStatus] = useState(realtimeClient.status);
+
+  const syncHandlers = useRef(new Set());
+  const [isSyncing, setSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+
+  const registerSync = useCallback((handler) => {
+    syncHandlers.current.add(handler);
+    return () => syncHandlers.current.delete(handler);
+  }, []);
+
+  const syncingRef = useRef(false);
+  const sync = useCallback(async () => {
+    if (syncingRef.current) return;
+    syncingRef.current = true;
+    setSyncing(true);
+    try {
+      await Promise.allSettled([...syncHandlers.current].map((handler) => handler()));
+      setLastSyncedAt(new Date());
+    } finally {
+      syncingRef.current = false;
+      setSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (realtimeEnabled || !isAuthenticated) return undefined;
+    const interval = setInterval(() => void sync(), config.pollIntervalMs);
+    return () => clearInterval(interval);
+  }, [isAuthenticated, sync]);
 
   useEffect(() => {
     realtimeClient.configure({
@@ -31,7 +66,7 @@ export const RealtimeProvider = ({ children }) => {
   useEffect(() => realtimeClient.on(LOCAL_EVENTS.STATUS, setStatus), []);
 
   useEffect(() => {
-    if (isAuthenticated) realtimeClient.connect();
+    if (realtimeEnabled && isAuthenticated) realtimeClient.connect();
     else realtimeClient.disconnect();
   }, [isAuthenticated]);
 
@@ -59,9 +94,15 @@ export const RealtimeProvider = ({ children }) => {
     () => ({
       client: realtimeClient,
       status,
-      isReady: status === CONNECTION_STATUS.READY,
+      realtimeEnabled,
+      // Without a socket, HTTP is the transport and is always usable.
+      isReady: realtimeEnabled ? status === CONNECTION_STATUS.READY : true,
+      sync,
+      isSyncing,
+      lastSyncedAt,
+      registerSync,
     }),
-    [status],
+    [status, sync, isSyncing, lastSyncedAt, registerSync],
   );
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
@@ -81,4 +122,19 @@ export const useRealtimeEvent = (event, handler) => {
     if (!handler) return undefined;
     return client.on(event, handler);
   }, [client, event, handler]);
+};
+
+/**
+ * Registers a catch-up handler, run on every sync while the socket is off.
+ * The latest handler is always the one called, so it may close over state.
+ */
+export const useSyncHandler = (handler) => {
+  const { registerSync, realtimeEnabled } = useRealtime();
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+
+  useEffect(() => {
+    if (realtimeEnabled) return undefined;
+    return registerSync(() => handlerRef.current?.());
+  }, [registerSync, realtimeEnabled]);
 };

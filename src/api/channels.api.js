@@ -34,8 +34,15 @@ export const channelsApi = {
   join: (ref, password) => httpClient.post(`/channels/${encodeRef(ref)}/join`, { password }),
   leave: (ref) => httpClient.post(`/channels/${encodeRef(ref)}/leave`),
 
-  messages: (ref, { limit, beforeCreatedAt, beforeId } = {}) =>
+  messages: (ref, { limit, beforeCreatedAt, beforeId, afterCreatedAt, afterId } = {}) =>
     httpClient.get(`/channels/${encodeRef(ref)}/messages`, {
-      query: { limit, beforeCreatedAt, beforeId },
+      query: { limit, beforeCreatedAt, beforeId, afterCreatedAt, afterId },
     }),
+  sendMessage: (ref, { content, attachmentIds, clientMessageId }) =>
+    httpClient.post(`/channels/${encodeRef(ref)}/messages`, {
+      content,
+      attachmentIds,
+      clientMessageId,
+    }),
+  markRead: (ref) => httpClient.post(`/channels/${encodeRef(ref)}/read`),
 };

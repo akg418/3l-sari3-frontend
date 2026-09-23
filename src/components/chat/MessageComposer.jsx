@@ -29,6 +29,10 @@ export const MessageComposer = ({ channelRef, onSend, onError, disabled, placeho
 
   const stageFiles = (files) => {
     if (!files || files.length === 0) return;
+    if (draft.constraints.enabled === false) {
+      onError?.('File uploads are turned off.');
+      return;
+    }
     const { rejected } = draft.add(files);
     for (const reason of rejected) onError?.(reason);
   };
@@ -105,16 +109,19 @@ export const MessageComposer = ({ channelRef, onSend, onError, disabled, placeho
           }}
         />
 
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || draft.isFull}
-          title={draft.isFull ? 'Attachment limit reached' : 'Attach a file'}
-          aria-label="Attach a file"
-        >
-          📎
-        </Button>
+        {/* The server can switch uploads off (ATTACHMENTS_ENABLED=false). */}
+        {draft.constraints.enabled !== false && (
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={disabled || draft.isFull}
+            title={draft.isFull ? 'Attachment limit reached' : 'Attach a file'}
+            aria-label="Attach a file"
+          >
+            📎
+          </Button>
+        )}
 
         <label className="visually-hidden" htmlFor="composer">
           Message
