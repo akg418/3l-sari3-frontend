@@ -3,7 +3,7 @@ import { channelsApi } from '../api/channels.api.js';
 import { messageForError } from '../utils/errorMessages.js';
 import { SERVER_EVENTS } from '../websocket/events.js';
 import { useAuth } from './AuthContext.jsx';
-import { useRealtime, useRealtimeEvent } from './RealtimeContext.jsx';
+import { useRealtime, useRealtimeEvent, useSyncHandler } from './RealtimeContext.jsx';
 import { useToast } from './ToastContext.jsx';
 
 const ChannelsContext = createContext(null);
@@ -180,7 +180,7 @@ export const matchesFilters = (channel, filters) => {
 
 export const ChannelsProvider = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  const { client, isReady } = useRealtime();
+  const { client, isReady, realtimeEnabled } = useRealtime();
   const toast = useToast();
   const [state, dispatch] = useReducer(reducer, initialState);
 
@@ -243,8 +243,12 @@ export const ChannelsProvider = ({ children }) => {
   // A reconnect may have missed events, so both views are re-read once the
   // socket is usable again.
   useEffect(() => {
-    if (isReady) void refreshRef.current();
-  }, [isReady]);
+    if (realtimeEnabled && isReady) void refreshRef.current();
+  }, [isReady, realtimeEnabled]);
+
+  // Without a socket, a sync re-reads both views: new channels, expiries and
+  // unread counts all come from the server's current state.
+  useSyncHandler(() => refreshRef.current());
 
   const refreshQuota = useCallback(() => {
     void channelsApi
@@ -318,10 +322,10 @@ export const ChannelsProvider = ({ children }) => {
   const leave = useCallback(
     async (ref) => {
       const { channelId } = await channelsApi.leave(ref);
-      await client.leaveChannel(channelId).catch(() => {});
+      if (realtimeEnabled) await client.leaveChannel(channelId).catch(() => {});
       dispatch({ type: 'UPSERT', channel: { id: channelId, isMember: false } });
     },
-    [client],
+    [client, realtimeEnabled],
   );
 
   const create = useCallback(
