@@ -24,7 +24,7 @@ export const config = Object.freeze({
    * fetches updates on demand and a background sync runs every interval.
    */
   realtimeEnabled: import.meta.env.VITE_REALTIME_ENABLED === 'true',
-  pollIntervalMs: Number(import.meta.env.VITE_POLL_INTERVAL_MS) || 60 * 1000,
+  pollIntervalMs: Number(import.meta.env.VITE_POLL_INTERVAL_MS) || 5 * 60 * 1000,
   appName: import.meta.env.VITE_APP_NAME ?? '3l sari3',
 
   /** Shown in the footer. Branding, not configuration, so it lives here. */
