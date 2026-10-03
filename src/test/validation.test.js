@@ -32,7 +32,7 @@ describe('Client-side validation mirror', () => {
   });
 
   describe('channel names', () => {
-    it.each(['general', 'gaming', 'room123', 'my-channel'])('accepts %s', (name) => {
+    it.each(['general', 'gaming', 'room123', 'my-channel', 'ايييه-اللي-بيحصل'])('accepts %s', (name) => {
       expect(validateChannelName(name)).toBeNull();
     });
 

@@ -19,7 +19,7 @@ export const ChannelCard = ({ channel, onJoin, onOpen, onLeave }) => {
     setIsBusy(true);
     try {
       if (channel.isMember) {
-        onOpen ? onOpen(channel) : navigate(`/channels/${channel.slug ?? channel.name}`);
+        onOpen ? onOpen(channel) : navigate(`/channels/${encodeURIComponent(channel.slug ?? channel.name)}`);
         return;
       }
       await onJoin(channel);

@@ -7,7 +7,7 @@
  */
 export const RULES = Object.freeze({
   USERNAME: /^[A-Za-z_][A-Za-z0-9_.-]{2,23}$/,
-  CHANNEL_NAME: /^[A-Za-z_][A-Za-z0-9_.-]{0,19}$/,
+  CHANNEL_NAME: /^[\p{L}_][\p{L}\p{M}\p{N}_.-]{0,19}$/u,
 });
 
 export const LIMITS = Object.freeze({
@@ -30,7 +30,7 @@ export const validateUsername = (value) => {
   if (trimmed.length > LIMITS.USERNAME_MAX) return `Username must be at most ${LIMITS.USERNAME_MAX} characters.`;
   if (/\s/.test(trimmed)) return 'Username cannot contain spaces.';
   if (/^[0-9]/.test(trimmed)) return 'Username cannot start with a number.';
-  if (!RULES.USERNAME.test(trimmed)) return 'Use only letters, numbers, and "_", "." or "-".';
+  if (!RULES.USERNAME.test(trimmed)) return 'Use only letters (any language), numbers, and "_", "." or "-".';
   return null;
 };
 
@@ -57,7 +57,7 @@ export const validateChannelName = (value) => {
   // An empty name is valid: the server generates one.
   if (!trimmed) return null;
   if (/\s/.test(trimmed)) return 'Channel name cannot contain spaces.';
-  if (/^[0-9]/.test(trimmed)) return 'Channel name cannot start with a number.';
+  if (/^\p{N}/u.test(trimmed)) return 'Channel name cannot start with a number.';
   if (trimmed.length > LIMITS.CHANNEL_NAME_MAX)
     return `Channel name must be at most ${LIMITS.CHANNEL_NAME_MAX} characters.`;
   if (!RULES.CHANNEL_NAME.test(trimmed)) return 'Use only letters, numbers, and "_", "." or "-".';
