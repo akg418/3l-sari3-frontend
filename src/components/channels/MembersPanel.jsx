@@ -1,4 +1,5 @@
 import { Avatar } from '../common/Feedback.jsx';
+import { Button } from '../common/Button.jsx';
 import { initialsOf, pluralize } from '../../utils/format.js';
 
 /**
@@ -8,8 +9,19 @@ import { initialsOf, pluralize } from '../../utils/format.js';
  * whether that person is connected right now, which the realtime layer
  * reports. Someone who has joined but closed their tab appears as a member who
  * is away, not as gone.
+ *
+ * The owner additionally gets block / unblock controls. `onBlock` being absent
+ * is what hides them.
  */
-export const MembersPanel = ({ members, onlineCount, isOpen, onClose }) => (
+export const MembersPanel = ({
+  members,
+  onlineCount,
+  isOpen,
+  onClose,
+  blocked = [],
+  onBlock,
+  onUnblock,
+}) => (
   <aside className={`members ${isOpen ? 'members--open' : ''}`.trim()} aria-label="Channel members">
     <header className="members__head">
       <div>
@@ -41,10 +53,47 @@ export const MembersPanel = ({ members, onlineCount, isOpen, onClose }) => (
             </span>
             <span className="member__meta">{member.isOnline ? 'Online' : 'Away'}</span>
           </div>
+
+          {onBlock && !member.isOwner && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onBlock(member)}
+              title={`Remove ${member.username} and stop them rejoining`}
+            >
+              Block
+            </Button>
+          )}
         </li>
       ))}
 
       {members.length === 0 && <li className="member__empty">Nobody here yet.</li>}
     </ul>
+
+    {onUnblock && blocked.length > 0 && (
+      <>
+        <header className="members__head">
+          <div>
+            <h3 className="members__title">Blocked</h3>
+            <p className="members__subtitle">{pluralize(blocked.length, 'user')}</p>
+          </div>
+        </header>
+        <ul className="members__list">
+          {blocked.map((user) => (
+            <li key={user.id} className="member">
+              <span className="member__presence">
+                <Avatar initials={initialsOf(user.username)} />
+              </span>
+              <div className="member__body">
+                <span className="member__name">{user.username}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => onUnblock(user)}>
+                Unblock
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </>
+    )}
   </aside>
 );

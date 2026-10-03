@@ -274,6 +274,18 @@ export const ChannelsProvider = ({ children }) => {
     }, []),
   );
 
+  // Viewer-neutral, so merging it keeps whatever membership this client knows.
+  useRealtimeEvent(
+    SERVER_EVENTS.CHANNEL_EXTENDED,
+    useCallback(({ channel }) => dispatch({ type: 'UPSERT', channel }), []),
+  );
+
+  // A blocked user cannot rejoin, so the channel is dropped from their lists.
+  useRealtimeEvent(
+    SERVER_EVENTS.CHANNEL_BLOCKED,
+    useCallback(({ channelId }) => dispatch({ type: 'REMOVE', channelId }), []),
+  );
+
   useRealtimeEvent(
     SERVER_EVENTS.CHANNEL_ACTIVITY,
     useCallback(({ channelId }) => dispatch({ type: 'ACTIVITY', channelId }), []),
@@ -392,6 +404,7 @@ export const ChannelsProvider = ({ children }) => {
           (channel) => channel.name.toLowerCase() === String(slug ?? '').toLowerCase(),
         ),
       removeChannel: (channelId) => dispatch({ type: 'REMOVE', channelId }),
+      upsertChannel: (channel) => dispatch({ type: 'UPSERT', channel }),
     }),
     [allChannels, myChannels, state, setFilters, loadMore, refresh, create, join, leave],
   );

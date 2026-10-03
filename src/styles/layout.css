@@ -463,6 +463,7 @@
 .message__content {
   min-width: 0;
   flex: 1;
+  max-width: min(75%, 640px);
 }
 
 .message__head {
@@ -486,9 +487,42 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Speech bubbles: your own messages on the right, everyone else's on the left. */
 .message__body {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  display: inline-block;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-lg);
+  border-top-left-radius: var(--radius-sm);
+  background: var(--color-surface-sunken);
+}
+
+.message--own {
+  flex-direction: row-reverse;
+}
+
+.message--own .message__content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.message--own .message__head {
+  flex-direction: row-reverse;
+}
+
+.message--own .message__body {
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+}
+
+.message--own.message--failed .message__body {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
 }
 
 .message__status {

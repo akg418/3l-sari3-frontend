@@ -50,13 +50,13 @@ class HttpClient {
     return this.#request('POST', path, body, options);
   }
 
-  async #request(method, path, body, { auth = true, query } = {}) {
+  async #request(method, path, body, { auth = true, query, headers: extraHeaders } = {}) {
     const url = new URL(`${this.baseUrl}${path}`);
     for (const [key, value] of Object.entries(query ?? {})) {
       if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
     }
 
-    const headers = { Accept: 'application/json' };
+    const headers = { Accept: 'application/json', ...extraHeaders };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
     const token = auth ? this.#getToken() : null;

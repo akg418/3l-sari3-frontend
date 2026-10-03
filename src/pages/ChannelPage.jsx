@@ -32,7 +32,7 @@ export const ChannelPage = () => {
   const { channelName } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { getChannelBySlug, join, refresh } = useChannels();
+  const { getChannelBySlug, join, refresh, upsertChannel } = useChannels();
   const { isReady, realtimeEnabled } = useRealtime();
   const toast = useToast();
 
@@ -42,6 +42,8 @@ export const ChannelPage = () => {
   const [passwordError, setPasswordError] = useState(null);
   const [isExpiringSoon, setExpiringSoon] = useState(false);
   const [isMembersOpen, setMembersOpen] = useState(true);
+  const [isExtending, setExtending] = useState(false);
+  const [blocked, setBlocked] = useState([]);
 
   const chat = useChannelChat(channel?.id);
   const { severity, isExpired } = useCountdown(channel?.expiresAt);
@@ -49,6 +51,24 @@ export const ChannelPage = () => {
   useEffect(() => {
     if (knownChannel) setChannel(knownChannel);
   }, [knownChannel]);
+
+  // A new expiry means the channel was extended, so any warning is stale.
+  useEffect(() => setExpiringSoon(false), [channel?.expiresAt]);
+
+  const isOwner = Boolean(channel?.isOwner);
+  useEffect(() => {
+    if (!isOwner || !channel?.id) return undefined;
+    let cancelled = false;
+    channelsApi
+      .blocked(channel.id)
+      .then((data) => {
+        if (!cancelled) setBlocked(data.blocked);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, channel?.id]);
 
   /**
    * Resolves the name in the URL to a channel. The directory usually already
@@ -112,6 +132,16 @@ export const ChannelPage = () => {
     ),
   );
 
+  useRealtimeEvent(
+    SERVER_EVENTS.CHANNEL_BLOCKED,
+    useCallback(
+      (payload) => {
+        if (payload.channelId === channel?.id) returnToDirectory(payload.message);
+      },
+      [channel?.id, returnToDirectory],
+    ),
+  );
+
   // Without a socket there is no `channel:expired` push, so ask the server:
   // once the countdown ends (and on every sync) a "gone" answer closes the page.
   const { sync: syncChat, isGone } = chat;
@@ -137,6 +167,43 @@ export const ChannelPage = () => {
       await chat.join(password);
     } catch (error) {
       setPasswordError(messageForError(error));
+    }
+  };
+
+  const handleExtend = async () => {
+    setExtending(true);
+    try {
+      const { channel: extended } = await channelsApi.extend(channel.id);
+      setChannel(extended);
+      upsertChannel(extended);
+      toast.success(
+        `Added ${extended.extensionMinutes} minutes. ${extended.extensionsRemaining} extensions left.`,
+      );
+    } catch (error) {
+      toast.error(messageForError(error));
+    } finally {
+      setExtending(false);
+    }
+  };
+
+  const handleBlock = async (member) => {
+    if (!window.confirm(`Block ${member.username}? They will be removed and cannot rejoin.`)) return;
+    try {
+      const data = await channelsApi.block(channel.id, member.id);
+      setBlocked(data.blocked);
+      // Over a socket the server pushes the new roster; without one, fetch it.
+      if (!realtimeEnabled) void syncChat();
+    } catch (error) {
+      toast.error(messageForError(error));
+    }
+  };
+
+  const handleUnblock = async (user) => {
+    try {
+      const data = await channelsApi.unblock(channel.id, user.id);
+      setBlocked(data.blocked);
+    } catch (error) {
+      toast.error(messageForError(error));
     }
   };
 
@@ -191,6 +258,18 @@ export const ChannelPage = () => {
 
           <div className="chat__meta">
             <Countdown expiresAt={channel.expiresAt} />
+            {channel.isOwner && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleExtend}
+                isLoading={isExtending}
+                disabled={channel.extensionsRemaining === 0}
+                title={`${channel.extensionsRemaining ?? 0} of ${(channel.extensionsUsed ?? 0) + (channel.extensionsRemaining ?? 0)} extensions left`}
+              >
+                +{channel.extensionMinutes ?? 10} min ({channel.extensionsRemaining ?? 0} left)
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -245,6 +324,9 @@ export const ChannelPage = () => {
         onlineCount={chat.onlineCount}
         isOpen={isMembersOpen}
         onClose={() => setMembersOpen(false)}
+        blocked={blocked}
+        onBlock={isOwner ? handleBlock : undefined}
+        onUnblock={isOwner ? handleUnblock : undefined}
       />
 
       <JoinPrivateChannelModal
