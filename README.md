@@ -7,6 +7,12 @@ WebSocket client that expects to be disconnected.
 > [3l-sari3-backend](https://github.com/akg418/3l-sari3-backend). Start that
 > first - this app is not much use without it.
 
+> **WebSocket is off in the hosted version.** The frontend, backend and
+> database all run on free tiers, and free serverless hosting cannot keep
+> WebSocket connections open. Messages from other people or devices are not
+> pushed live: the app fetches new ones every 5 minutes, or straight away when
+> you press **⟳ Sync**.
+
 ---
 
 ## Contents

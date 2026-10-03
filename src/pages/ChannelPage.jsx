@@ -290,6 +290,14 @@ export const ChannelPage = () => {
           </div>
         </header>
 
+        {!realtimeEnabled && (
+          <div className="chat__banner chat__banner--info" role="note">
+            <span aria-hidden="true">ℹ️</span>
+            Live updates are off: this app runs on free hosting, which cannot keep WebSockets
+            open. New messages load every 5 minutes - press ⟳ Sync to get them now.
+          </div>
+        )}
+
         {(isExpiringSoon || severity === 'critical') && (
           <div className="chat__banner" role="status">
             <span aria-hidden="true">⏳</span>

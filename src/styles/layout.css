@@ -399,6 +399,13 @@
   animation: rise-in var(--duration-base) var(--ease-out) both;
 }
 
+.chat__banner--info {
+  background: var(--color-accent-soft);
+  border-bottom-color: var(--color-accent-border);
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
 .chat__messages {
   flex: 1;
   min-height: 0;
