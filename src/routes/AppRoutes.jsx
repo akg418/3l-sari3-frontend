@@ -8,6 +8,7 @@ import { AllChannelsPage } from '../pages/AllChannelsPage.jsx';
 import { MyChannelsPage } from '../pages/MyChannelsPage.jsx';
 import { ChannelPage } from '../pages/ChannelPage.jsx';
 import { NotFoundPage } from '../pages/NotFoundPage.jsx';
+import { StatsPage } from '../pages/StatsPage.jsx';
 
 export const AppRoutes = () => (
   <Routes>
@@ -28,6 +29,9 @@ export const AppRoutes = () => (
         <Route path="/channels/:channelName" element={<ChannelPage />} />
       </Route>
     </Route>
+
+    {/* Guarded by its own access code, so it needs no account. */}
+    <Route path="/stats" element={<StatsPage />} />
 
     <Route path="/" element={<Navigate to="/channels" replace />} />
   </Routes>

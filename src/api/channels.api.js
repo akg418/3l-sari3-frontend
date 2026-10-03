@@ -45,4 +45,10 @@ export const channelsApi = {
       clientMessageId,
     }),
   markRead: (ref) => httpClient.post(`/channels/${encodeRef(ref)}/read`),
+
+  /** Owner only. */
+  extend: (ref) => httpClient.post(`/channels/${encodeRef(ref)}/extend`),
+  blocked: (ref) => httpClient.get(`/channels/${encodeRef(ref)}/blocked`),
+  block: (ref, userId) => httpClient.post(`/channels/${encodeRef(ref)}/block`, { userId }),
+  unblock: (ref, userId) => httpClient.post(`/channels/${encodeRef(ref)}/unblock`, { userId }),
 };

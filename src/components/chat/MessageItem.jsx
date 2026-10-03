@@ -11,6 +11,7 @@ export const MessageItem = ({ message, isOwn, isContinuation, currentUsername, o
 
   const classes = [
     'message',
+    isOwn ? 'message--own' : 'message--other',
     isContinuation ? 'message--continuation' : '',
     message.isPending ? 'message--pending' : '',
     message.isFailed ? 'message--failed' : '',

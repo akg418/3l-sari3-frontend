@@ -26,6 +26,13 @@ const MESSAGES = {
   CHANNEL_NOT_JOINED: 'Join this channel before taking part.',
   CHANNEL_OWNER_CANNOT_LEAVE:
     'You created this channel, so you cannot leave it. It disappears on its own when it expires.',
+  CHANNEL_OWNER_ONLY: 'Only the channel owner can do that.',
+  CHANNEL_EXTENSION_LIMIT_REACHED: 'This channel has already been extended the maximum number of times.',
+  CHANNEL_USER_BLOCKED: 'The owner of this channel has blocked you from it.',
+  CHANNEL_CANNOT_BLOCK_OWNER: 'You cannot block yourself.',
+  USER_NOT_FOUND: 'That user no longer exists.',
+  STATS_DISABLED: 'Statistics are not enabled on this server.',
+  STATS_CODE_INVALID: 'Incorrect access code.',
   CHANNEL_LIMIT_REACHED:
     'You have reached your limit of active channels. Wait for one to expire, or leave one, and try again.',
 
