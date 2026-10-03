@@ -8,6 +8,7 @@ import { MessageComposer } from '../components/chat/MessageComposer.jsx';
 import { MessageList } from '../components/chat/MessageList.jsx';
 import { MembersPanel } from '../components/channels/MembersPanel.jsx';
 import { JoinPrivateChannelModal } from '../components/channels/JoinPrivateChannelModal.jsx';
+import { BlockUserModal } from '../components/channels/BlockUserModal.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useChannels } from '../context/ChannelsContext.jsx';
 import { useRealtime, useRealtimeEvent } from '../context/RealtimeContext.jsx';
@@ -44,6 +45,9 @@ export const ChannelPage = () => {
   const [isMembersOpen, setMembersOpen] = useState(true);
   const [isExtending, setExtending] = useState(false);
   const [blocked, setBlocked] = useState([]);
+  const [blockTarget, setBlockTarget] = useState(null);
+  // Stable, so the dialog does not re-grab focus on every countdown tick.
+  const closeBlockModal = useCallback(() => setBlockTarget(null), []);
 
   const chat = useChannelChat(channel?.id);
   const { severity, isExpired } = useCountdown(channel?.expiresAt);
@@ -187,10 +191,11 @@ export const ChannelPage = () => {
   };
 
   const handleBlock = async (member) => {
-    if (!window.confirm(`Block ${member.username}? They will be removed and cannot rejoin.`)) return;
     try {
       const data = await channelsApi.block(channel.id, member.id);
       setBlocked(data.blocked);
+      setBlockTarget(null);
+      toast.success(`${member.username} was blocked.`);
       // Over a socket the server pushes the new roster; without one, fetch it.
       if (!realtimeEnabled) void syncChat();
     } catch (error) {
@@ -333,8 +338,14 @@ export const ChannelPage = () => {
         isOpen={isMembersOpen}
         onClose={() => setMembersOpen(false)}
         blocked={blocked}
-        onBlock={isOwner ? handleBlock : undefined}
+        onBlock={isOwner ? setBlockTarget : undefined}
         onUnblock={isOwner ? handleUnblock : undefined}
+      />
+
+      <BlockUserModal
+        user={blockTarget}
+        onClose={closeBlockModal}
+        onConfirm={handleBlock}
       />
 
       <JoinPrivateChannelModal
